@@ -1,0 +1,19 @@
+Third-party marks and sources
+
+The menu-bar app bundles provider marks to make the dashboard identifiable:
+
+- OpenAI knot — Wikimedia Commons, File:OpenAI_Logo.svg
+  https://commons.wikimedia.org/wiki/File:OpenAI_Logo.svg
+- Claude starburst — Simple Icons, claude
+  https://simpleicons.org/
+- Grok slash — Wikimedia Commons, File:Grok_logo_without_text.svg
+  https://commons.wikimedia.org/wiki/File:Grok_logo_without_text.svg
+
+OpenAI, ChatGPT, Codex, Claude, Anthropic, Grok and xAI are trademarks of their
+respective owners. The marks are used only to identify the corresponding
+services in a local dashboard and are not covered by this repository's MIT
+license. Remove or replace them before redistributing the application
+commercially, and follow each owner's brand guidelines.
+
+The application is not affiliated with or endorsed by OpenAI, Anthropic or xAI.
+Provider usage endpoints are undocumented and may change without notice.

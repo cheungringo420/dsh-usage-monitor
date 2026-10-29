@@ -1,0 +1,18 @@
+# Usage Monitor bundle row. Tune the config in this profile's cordis.patch.yml
+# or leave these defaults.
+- insert:
+    - id: usage-monitor
+      name: '@local/usage-monitor'
+      config:
+        pollSeconds: 300
+        refreshMinSeconds: 120
+        notifications:
+          toast: true
+          macos: false
+          lowThreshold: 10
+        discovery:
+          cli: true
+          ccSwitch: true
+        claudeRefreshTokens: true
+        ui:
+          dock: true

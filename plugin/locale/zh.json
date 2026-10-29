@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "用量監控",
+    "description": "集中顯示所有 Codex、Claude 與 Grok 帳號的剩餘額度、重設時間與補充提醒。"
+  }
+}
