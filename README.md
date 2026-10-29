@@ -132,6 +132,27 @@ profile:
    `install_bundle`).
 3. Wait for the plugin row to become active, then refresh the Web page once.
 
+#### Manual profile installation (advanced)
+
+Plugin Manager is the supported path. If you maintain the profile yourself, the
+bundle is a normal package:
+
+1. Add a link dependency to
+   `$DSH_HOME/profiles/<profile>/package.json`:
+
+   ```json
+   "dependencies": {
+     "@local/usage-monitor": "link:/absolute/path/to/dsh-usage-monitor/plugin"
+   }
+   ```
+
+2. Add `"@local/usage-monitor"` to the same file's `dsh.profile.bundles`.
+3. Run the profile's package manager (`pnpm install` in that directory) and
+   restart DeepSeek Harness.
+
+The bundle's `plugin/cordis.patch.yml` inserts the row and default config; use a
+profile override only for configuration changes.
+
 You should see a gauge in the sidebar and a **Usage Monitor** strip under the
 composer. If the panel does not appear, see [Troubleshooting](#troubleshooting).
 
