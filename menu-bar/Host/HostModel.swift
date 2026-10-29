@@ -38,6 +38,7 @@ final class HostModel: ObservableObject {
     private static let menuBarSelectionKey = "usageWidget.menuBarSelection"
     private let server = StateServer()
     private var started = false
+    private var scheduler: Task<Void, Never>?
 
     init() {
         let saved = UserDefaults.standard.string(forKey: Self.menuBarSelectionKey)
@@ -56,37 +57,32 @@ final class HostModel: ObservableObject {
         server.start()
         reload(notify: true)
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        refresh()
+        scheduler = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 300_000_000_000)
+                guard let self else { return }
+                self.refresh()
+            }
+        }
     }
 
-    /// Ask the DSH plugin to fetch all providers now. The helper can't use the
-    /// browser-authenticated `/api` bridge, so the request travels as a file.
+    /// Read the local provider credentials and call the usage APIs directly.
+    /// No DeepSeek Harness install is required for the menu-bar app.
     func refresh() {
         guard !refreshing else { return }
         refreshing = true
-        let baseline = lastUpdated
-
-        do {
-            let payload = "\(Date().timeIntervalSince1970)\n"
-            guard let data = payload.data(using: .utf8) else { throw CocoaError(.fileWriteUnknown) }
-            try data.write(to: UsageStateStore.refreshRequestURL, options: .atomic)
-        } catch {
-            lastError = "Could not ask DeepSeek Harness to refresh: \(error.localizedDescription)"
-            refreshing = false
-            return
-        }
+        let previous = snapshot
 
         Task { @MainActor in
-            defer {
-                refreshing = false
-                server.reloadWidgets()
-            }
-            for _ in 0..<20 {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                reload(notify: false)
-                if lastUpdated != baseline {
-                    return
-                }
-            }
+            let result = await Task.detached(priority: .userInitiated) {
+                await DirectUsageEngine.collect(previous: previous)
+            }.value
+            self.snapshot = result.snapshot
+            self.lastUpdated = UsageDate.parse(result.snapshot.updatedAt) ?? Date()
+            self.lastError = result.error
+            self.refreshing = false
+            self.server.reloadWidgets()
         }
     }
 
@@ -98,7 +94,7 @@ final class HostModel: ObservableObject {
         } else {
             self.snapshot = nil
             self.lastUpdated = nil
-            self.lastError = "Waiting for ~/.dsh/usage-monitor/state.json"
+            self.lastError = nil
         }
         if notify {
             server.reloadWidgets()
@@ -152,7 +148,11 @@ final class HostModel: ObservableObject {
     }
 
     func openStateFolder() {
-        NSWorkspace.shared.activateFileViewerSelecting([UsageStateStore.fileURL])
+        if FileManager.default.fileExists(atPath: UsageStateStore.fileURL.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([UsageStateStore.fileURL])
+        } else {
+            NSWorkspace.shared.open(UsageStateStore.supportDirectory)
+        }
     }
 
     func quit() {

@@ -3,6 +3,29 @@
 All notable changes are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] — 2026-10-29
+
+### Added
+
+- **Standalone menu-bar mode.** The macOS app now discovers Codex, Claude and
+  Grok credentials and calls the providers' usage APIs itself. DeepSeek Harness
+  is no longer required for the menu-bar number.
+- Direct provider engine with Codex JWT/team identity, CC Switch discovery,
+  Claude Keychain refresh and write-back, and Grok product/balance parsing.
+- The app writes its own 0600 snapshot at
+  `~/Library/Application Support/DSHUsageMonitor/snapshot.json`; the DSH
+  snapshot is only a one-time fallback.
+- Direct **Refresh** (no `refresh.request`/DSH process needed).
+- Prebuilt universal menu-bar helper `UsageWidget-1.1.0.zip`.
+
+### Fixed
+
+- Numeric `0` values were incorrectly treated as booleans, hiding windows whose
+  used percentage was 0 and preventing Claude token refresh when the stored
+  expiry was `0`.
+- The menu-bar app no longer shows “Waiting for DeepSeek Harness” when run on a
+  machine without the harness.
+
 ## [1.0.0] — 2026-10-29
 
 First public release.
@@ -32,4 +55,5 @@ First public release.
   days).
 - Provider usage endpoints are undocumented and may change.
 
+[1.1.0]: https://github.com/cheungringo420/dsh-usage-monitor/releases/tag/v1.1.0
 [1.0.0]: https://github.com/cheungringo420/dsh-usage-monitor/releases/tag/v1.0.0

@@ -19,10 +19,15 @@ credentials, so a few rules matter more than usual.
 
 ### Plugin
 
-The bundle is installed into a DeepSeek Harness profile through Plugin Manager.
-For iteration, ask the agent to install the local `plugin/` directory, or use the
-profile's `link:` dependency. Host changes need a bundle reload (toggle the
-plugin row or restart DSH); client changes hot-reload in an open page.
+The menu-bar app is the standalone product and should not require DeepSeek
+Harness. Keep the direct engine in `menu-bar/Host/DirectUsageEngine.swift`
+independent of the plugin.
+
+The optional bundle is installed into a DeepSeek Harness profile through Plugin
+Manager. For iteration, ask the agent to install the local `plugin/` directory,
+or use the profile's `link:` dependency. Host changes need a bundle reload
+(toggle the plugin row or restart DSH); client changes hot-reload in an open
+page.
 
 Checks before pushing:
 

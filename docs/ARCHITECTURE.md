@@ -3,17 +3,47 @@
 ## Components
 
 ```
-plugin/                 DSH bundle (Host + Client)
-menu-bar/               native macOS menu-bar app (SwiftUI)
-  Host/                 MenuBarExtra, loopback server, refresh request
+menu-bar/               standalone native macOS app
+  Host/                 DirectUsageEngine, MenuBarExtra, loopback server
   Shared/               snapshot models and formatting
   Widget/               experimental WidgetKit extension
+plugin/                 optional DSH bundle (Host + Client)
 ```
 
-The plugin is the only component that talks to providers. The menu-bar app is a
-local reader with a native UI; it never holds provider credentials.
+The menu-bar app is self-contained: it discovers credentials and calls provider
+usage APIs directly. The DSH plugin is an optional second path that powers the
+in-app panel and agent tool. Both normalize into the same window model, but they
+do not depend on each other.
 
-## Host half (`plugin/index.js`, `plugin/lib/`)
+## Standalone menu-bar engine (`menu-bar/Host/DirectUsageEngine.swift`)
+
+Runs in the app process on launch and every five minutes, and on **Refresh**:
+
+1. **Discovery** — Codex `$CODEX_HOME/auth.json` (default `~/.codex`) plus
+   `~/.codex-*/auth.json` and CC Switch `providers` rows (`app_type = 'codex'`);
+   Claude Keychain/file/env; every Grok entry in `~/.grok/auth.json`.
+2. **Identity** — Codex accounts are keyed by the access-token JWT
+   (`chatgpt_user_id`, falling back to email); `chatgpt_account_id` is sent as
+   the team header. Expired CC Switch tokens are skipped.
+3. **Fetch** — `URLSession` GETs with provider-specific headers and a 12 s
+   timeout. 401/403 → `auth`, 429 → `rate-limit`, timeout → `timeout`.
+4. **Normalize** — the same `UsageAccount` / `UsageWindow` model as the plugin:
+   Codex primary/secondary windows, Claude 5h/week/Opus/Sonnet/extra, Grok weekly
+   with products and balances.
+5. **Persist** — `~/Library/Application Support/DSHUsageMonitor/snapshot.json`
+   (mode 0600, no tokens). If it is absent, the app falls back once to the DSH
+   snapshot at `$DSH_HOME/usage-monitor/state.json`.
+6. **Claude refresh** — before expiry or after a 401, exchange the Keychain
+   refresh token at `platform.claude.com/v1/oauth/token` and write the rotated
+   tokens back to `Claude Code-credentials`, preserving `mcpOAuth`.
+7. **Publish** — `HostModel` updates the menu-bar label/popover; `StateServer`
+   serves the snapshot to the widget and asks WidgetKit to reload.
+
+A failed provider keeps the previous windows for that account and sets an
+`auth`/`error` status with sanitized detail. If no accounts are discovered the
+snapshot is empty and the UI explains which CLI to sign in to.
+
+## Optional DSH plugin Host half (`plugin/index.js`, `plugin/lib/`)
 
 ### Discovery
 
@@ -145,17 +175,17 @@ The page receives only the snapshot; it never sees a credential.
 ## Menu-bar app (`menu-bar/Host/`)
 
 - `MenuBarExtra` with `.window` style; `LSUIElement` keeps it out of the Dock.
-- `HostModel` reads `$DSH_HOME/usage-monitor/state.json` on launch and when
-  `StateServer` notices a modification (10 s poll), decoding accounts as an
-  array.
+- `HostModel` reads the app's own snapshot
+  (`~/Library/Application Support/DSHUsageMonitor/snapshot.json`) on launch and
+  when `StateServer` notices a modification (10 s poll), decoding accounts as an
+  array. A DSH snapshot is only a one-time fallback.
 - `StateServer` is a loopback-only `NWListener` on `127.0.0.1:47821` with a
   static token; it returns the snapshot JSON and reloads WidgetKit timelines.
 - The menu-bar label shows the worst window of **Worst of all** (the provider
   driving the number) or of the selected provider. The provider mark is rendered
   from a bundled template logo into a colored `NSImage`.
-- The **Refresh** button writes `refresh.request` next to the state file, then
-  polls the state for up to 20 s. It cannot call the browser-authenticated
-  `/api` bridge; the request file is the bridge.
+- The **Refresh** button calls `DirectUsageEngine.collect` immediately, updates
+  the snapshot and reloads WidgetKit. No DSH process is involved.
 - `MenuBarSelection` is persisted in `UserDefaults`.
 - The popover groups accounts by provider, with brand marks, provider colors,
   window bars, reset times and relative countdowns.
@@ -168,8 +198,8 @@ to use it. The menu-bar surface does not need signing.
 
 - A provider failure keeps the last known windows on the card, marks the account
   `auth` or `error`, and stores a sanitized detail.
-- Missing credentials produce a “not signed in” placeholder (Claude) or no card
-  for that provider.
+- Missing credentials produce an empty state with the relevant sign-in command,
+  or a status hint on the affected account.
 - Stale snapshots are retained; the helper shows STALE after 15 minutes, the
   in-app card after 10 minutes.
 - Provider endpoints are undocumented and can change; adapters are isolated so a
@@ -177,9 +207,10 @@ to use it. The menu-bar surface does not need signing.
 
 ## Development
 
-Plugin syntax: `node --check` on every file. The plugin is linked into a profile
-by Plugin Manager; Host code changes need the bundle to be reloaded (toggle the
-plugin row or restart DSH), while Client code hot-reloads in the open page.
+Plugin syntax: `node --check` on every file. The optional plugin is linked into
+a profile by Plugin Manager; Host code changes need the bundle to be reloaded
+(toggle the plugin row or restart DSH), while Client code hot-reloads in the open
+page. The menu-bar direct engine is built with the app and needs no DSH.
 
 Menu-bar build:
 

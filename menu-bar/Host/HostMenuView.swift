@@ -83,15 +83,15 @@ struct HostMenuView: View {
         .foregroundStyle(.primary)
         .disabled(model.refreshing)
         .opacity(model.refreshing ? 0.7 : 1)
-        .help("Ask DeepSeek Harness to fetch fresh provider usage")
+        .help("Fetch fresh Codex, Claude and Grok usage")
         .accessibilityLabel("Refresh")
     }
 
     private var subtitle: String {
-        if model.refreshing { return "Refreshing providers…" }
         guard let snapshot = model.snapshot, !snapshot.accounts.isEmpty else {
-            return "Waiting for DeepSeek Harness"
+            return model.refreshing ? "Reading local accounts…" : "No accounts yet"
         }
+        if model.refreshing { return "Refreshing providers…" }
         let updated = L10n.updated(model.lastUpdated ?? Date())
         return "\(L10n.accountCount(snapshot.accounts.count)) · \(updated)"
     }
@@ -113,16 +113,19 @@ struct HostMenuView: View {
     }
 
     private var statusState: (label: String, color: Color) {
-        if model.snapshot == nil { return ("NO DATA", .secondary) }
-        if model.isStale { return ("STALE", .orange) }
-        return ("LIVE", .green)
+        if let snapshot = model.snapshot, !snapshot.accounts.isEmpty {
+            if snapshot.accounts.allSatisfy({ $0.status != "ok" }) { return ("ERROR", .orange) }
+            if model.isStale { return ("STALE", .orange) }
+            return ("LIVE", .green)
+        }
+        return ("NO DATA", .secondary)
     }
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("No usage data yet")
+            Text("No accounts found")
                 .font(.system(size: 13, weight: .semibold))
-            Text(model.lastError ?? "Open DeepSeek Harness with the Usage Monitor plugin.")
+            Text(model.lastError ?? "Sign in with codex login, claude /login, or grok login.")
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

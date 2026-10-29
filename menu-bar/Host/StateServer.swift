@@ -10,20 +10,33 @@ enum UsageStateStore {
         return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".dsh")
     }
 
-    static var fileURL: URL {
+    /// Standalone mode writes its own snapshot here. It does not require DSH.
+    static var supportDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("DSHUsageMonitor", isDirectory: true)
+    }
+
+    static var cacheURL: URL {
+        supportDirectory.appendingPathComponent("snapshot.json")
+    }
+
+    /// Legacy location written by the DSH plugin. Read as a fallback so an
+    /// existing install keeps showing data until the first direct refresh.
+    static var legacyFileURL: URL {
         dshHome.appendingPathComponent("usage-monitor/state.json")
     }
 
-    static var refreshRequestURL: URL {
-        fileURL.deletingLastPathComponent().appendingPathComponent("refresh.request")
-    }
+    /// The helper's public state file. The widget server reads this too.
+    static var fileURL: URL { cacheURL }
 
     static func readData() -> Data? {
-        try? Data(contentsOf: fileURL)
+        if let data = try? Data(contentsOf: cacheURL), !data.isEmpty {
+            return data
+        }
+        return try? Data(contentsOf: legacyFileURL)
     }
 
-    /// The DSH plugin stores accounts as an id-keyed object; the widget and the
-    /// helper both consume the array form.
+    /// Accept both the plugin's id-keyed object and the helper's array form.
     static func snapshotData() -> Data? {
         guard let data = readData() else { return nil }
         guard var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
@@ -38,8 +51,27 @@ enum UsageStateStore {
                 if leftRank != rightRank { return leftRank < rightRank }
                 return (leftObject["label"] as? String ?? "") < (rightObject["label"] as? String ?? "")
             }
+        } else if let accounts = object["accounts"] as? [[String: Any]] {
+            object["accounts"] = accounts.sorted { left, right in
+                let leftRank = rank(left["provider"] as? String)
+                let rightRank = rank(right["provider"] as? String)
+                if leftRank != rightRank { return leftRank < rightRank }
+                return (left["label"] as? String ?? "") < (right["label"] as? String ?? "")
+            }
         }
         return try? JSONSerialization.data(withJSONObject: object)
+    }
+
+    static func save(_ snapshot: UsageSnapshot) throws {
+        let data = try JSONEncoder().encode(snapshot)
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(
+            at: supportDirectory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try data.write(to: cacheURL, options: [.atomic])
+        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: cacheURL.path)
     }
 
     private static func rank(_ provider: String?) -> Int {

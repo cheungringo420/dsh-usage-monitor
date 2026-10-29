@@ -19,15 +19,19 @@ paste actual tokens, Keychain values, or account emails; redact them.
 
 ## Scope notes
 
+- The standalone menu-bar app reads local Codex/Claude/Grok credentials and calls
+  the providers directly. It writes its snapshot to
+  `~/Library/Application Support/DSHUsageMonitor/snapshot.json` (mode 0600).
 - The menu-bar helper listens on `127.0.0.1:47821` with a static local token. It
   is a same-user, loopback mechanism, not a network service.
-- The Claude auto-refresh writes the Keychain item Claude Code already owns. Set
-  `claudeRefreshTokens: false` if you want the plugin to stay read-only.
+- Claude auto-refresh writes the Keychain item Claude Code already owns. It is
+  always on in the standalone app; set `claudeRefreshTokens: false` in the
+  optional DSH plugin if you want that path read-only.
 - Provider usage endpoints are undocumented. A provider response is treated as
   untrusted input; parsers are defensive and errors are sanitized before they
-  reach the UI or state file.
-- The plugin state file is mode 0600 and deliberately contains account labels and
-  emails. Do not share it publicly.
+  reach the UI or snapshot.
+- Snapshots are mode 0600 and deliberately contain account labels and emails.
+  They contain no tokens. Do not share them publicly.
 
 ## Dependencies
 
