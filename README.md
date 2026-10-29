@@ -136,7 +136,7 @@ flowchart LR
   P --> S["state.json · 0600"]
   S --> W["DSH Web panel"]
   S --> M["macOS menu-bar helper"]
-  M -- "refresh.request" --> P
+  M -->|refresh.request| P
 ```
 
 The plugin is the only component that talks to providers. It discovers local
