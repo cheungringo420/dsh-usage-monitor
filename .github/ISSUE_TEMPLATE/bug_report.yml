@@ -1,0 +1,90 @@
+name: Bug report
+description: Something is not working as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do **not** paste tokens, Keychain values, or
+        real account emails. Redact them before posting.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Release version, or the output of `git rev-parse --short HEAD`.
+      placeholder: v1.0.0 / 6f18019
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where does it happen?
+      options:
+        - DSH in-app panel
+        - Menu-bar app
+        - Plugin install / configuration
+        - Build or packaging
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - Not provider-specific
+        - Codex
+        - Claude
+        - Grok
+        - Multiple providers
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include sanitized errors or screenshots. Redact tokens and emails.
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: macOS version, DSH version, Xcode version if building the helper.
+      placeholder: macOS 26.6, DSH ..., Xcode 27.1
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed every token, Keychain value, and real account email from this report.
+          required: true

@@ -1,0 +1,57 @@
+name: Feature request
+description: Suggest a provider, a UI improvement, or an integration
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem before the solution. Provider adapters are welcome,
+        but undocumented endpoints and credential formats need care.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Provider / adapter
+        - In-app panel
+        - Menu-bar app
+        - Reminders / notifications
+        - Agent tool
+        - Documentation / setup
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      placeholder: I run out of ... and currently have to ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints
+      options:
+        - label: This can be implemented without sending credentials to a third-party server.
+          required: true
+        - label: This does not require model inference calls just to read usage.
+          required: true

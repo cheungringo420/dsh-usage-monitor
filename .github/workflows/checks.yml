@@ -1,0 +1,33 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  plugin:
+    name: Plugin syntax and metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check plugin JavaScript syntax
+        run: |
+          set -e
+          find plugin -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Validate plugin JSON
+        run: |
+          set -e
+          find plugin -name '*.json' -print0 | while IFS= read -r -d '' file; do
+            node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$file"
+          done

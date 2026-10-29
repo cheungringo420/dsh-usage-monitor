@@ -30,8 +30,9 @@ Codex identity is derived from the access-token JWT: `chatgpt_user_id` (falling
 back to email) is the account key, while `chatgpt_account_id` is the team id
 sent in the `chatgpt-account-id` header. This allows two users in one ChatGPT
 team to appear as two accounts. Expired CC Switch tokens are skipped; the CLI
-account wins when both describe the same user. Claude token refresh tokens are
-kept only in memory for keychain accounts.
+account wins when both describe the same user. Claude refresh tokens are read
+from the Keychain only when a refresh is due, and the rotated tokens are written
+back to the same item (see “Claude token refresh” below).
 
 ### Adapters (`lib/providers.js`)
 
