@@ -28,6 +28,10 @@ private struct MenuBarLabel: View {
     @ObservedObject var model: HostModel
 
     private var providerName: String {
+        if case .account(let id) = model.menuBarSelection,
+           let account = model.snapshot?.accounts.first(where: { $0.id == id }) {
+            return "\(account.providerTitle), \(account.label)"
+        }
         guard let provider = model.menuBarProvider else { return "all providers" }
         return ProviderTheme.theme(for: provider).name
     }
@@ -39,6 +43,7 @@ private struct MenuBarLabel: View {
                 .font(.system(size: 11, weight: .medium).monospacedDigit())
         }
         .accessibilityLabel("Usage Monitor, \(providerName), \(model.menuLabel)")
+        .help("\(providerName) · \(model.menuLabel) remaining")
     }
 }
 

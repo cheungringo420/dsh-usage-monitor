@@ -9,15 +9,25 @@ struct HostMenuView: View {
             header
 
             if let snapshot = model.snapshot, !snapshot.accounts.isEmpty {
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    VStack(alignment: .leading, spacing: 16) {
-                        ForEach(sections(for: snapshot.accounts)) { section in
-                            ProviderSectionView(section: section, now: context.date)
+                ScrollView {
+                    TimelineView(.periodic(from: .now, by: 30)) { context in
+                        VStack(alignment: .leading, spacing: 16) {
+                            ForEach(sections(for: snapshot.accounts)) { section in
+                                ProviderSectionView(section: section, now: context.date, model: model)
+                            }
                         }
                     }
                 }
+                .frame(height: max(180, min(480, (NSScreen.main?.visibleFrame.height ?? 800) - 280)))
             } else {
                 emptyState
+            }
+
+            if let error = model.accountActionError {
+                Text(error)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Divider()
@@ -115,6 +125,7 @@ struct HostMenuView: View {
     private var statusState: (label: String, color: Color) {
         if let snapshot = model.snapshot, !snapshot.accounts.isEmpty {
             if snapshot.accounts.allSatisfy({ $0.status != "ok" }) { return ("ERROR", .orange) }
+            if snapshot.accounts.contains(where: { $0.status != "ok" }) { return ("ATTENTION", .orange) }
             if model.isStale { return ("STALE", .orange) }
             return ("LIVE", .green)
         }
@@ -144,6 +155,15 @@ struct HostMenuView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if !model.excludedAccountIDs.isEmpty {
+                Button("Restore removed accounts (\(model.excludedAccountIDs.count))") {
+                    model.restoreRemovedAccounts()
+                }
+                .buttonStyle(.link)
+                .font(.system(size: 10.5))
+                .disabled(model.refreshing)
+            }
+
             HStack(spacing: 8) {
                 Text("Menu bar")
                     .font(.system(size: 10.5))
@@ -153,11 +173,17 @@ struct HostMenuView: View {
                     ForEach(MenuBarSelection.allCases) { selection in
                         Text(selection.title).tag(selection)
                     }
+                    if let accounts = model.snapshot?.accounts {
+                        ForEach(accounts) { account in
+                            Text("\(account.providerTitle) · \(account.label)")
+                                .tag(MenuBarSelection.account(account.id))
+                        }
+                    }
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .controlSize(.small)
-                .frame(width: 136)
+                .frame(width: 200)
             }
 
             HStack(spacing: 7) {
@@ -221,32 +247,45 @@ private struct ProviderSection: Identifiable {
 private struct ProviderSectionView: View {
     let section: ProviderSection
     let now: Date
+    @ObservedObject var model: HostModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                ProviderTile(provider: section.theme.id, size: 24)
-                Text(section.theme.name)
-                    .font(.system(size: 13, weight: .semibold))
+            Button {
+                model.menuBarSelection = MenuBarSelection(rawValue: section.theme.id) ?? .all
+            } label: {
+                HStack(spacing: 8) {
+                    ProviderTile(provider: section.theme.id, size: 24)
+                    Text(section.theme.name)
+                        .font(.system(size: 13, weight: .semibold))
 
-                if section.accounts.count > 1 {
-                    Text("\(section.accounts.count)")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
-                        .background(Color.primary.opacity(0.07), in: Capsule())
+                    if section.accounts.count > 1 {
+                        Text("\(section.accounts.count)")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Color.primary.opacity(0.07), in: Capsule())
+                    }
+
+                    Spacer(minLength: 8)
+                    if model.menuBarSelection.rawValue == section.theme.id {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(section.theme.accent)
+                    }
+                    Rectangle()
+                        .fill(section.theme.accent.opacity(0.22))
+                        .frame(width: 42, height: 1)
                 }
-
-                Spacer(minLength: 8)
-                Rectangle()
-                    .fill(section.theme.accent.opacity(0.22))
-                    .frame(width: 42, height: 1)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .help("Show \(section.theme.name) quota in the menu bar")
 
             VStack(spacing: 8) {
                 ForEach(section.accounts) { account in
-                    AccountCardView(account: account, theme: section.theme, now: now)
+                    AccountCardView(account: account, theme: section.theme, now: now, model: model)
                 }
             }
         }
@@ -257,6 +296,10 @@ private struct AccountCardView: View {
     let account: UsageAccount
     let theme: ProviderTheme
     let now: Date
+    @ObservedObject var model: HostModel
+
+    private var needsSignIn: Bool { account.status == "auth" }
+    private var signingIn: Bool { model.signingInAccountID == account.id }
 
     private var statusColor: Color {
         if account.status == "error" { return .red }
@@ -273,27 +316,46 @@ private struct AccountCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 6) {
-                Text(account.label)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            Button {
+                model.menuBarSelection = .account(account.id)
+            } label: {
+                HStack(spacing: 6) {
+                    Text(account.label)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
 
-                if let plan = account.plan, !plan.isEmpty {
-                    Text(plan.uppercased())
-                        .font(.system(size: 8, weight: .semibold))
-                        .tracking(0.4)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
-                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
+                    if let plan = account.plan, !plan.isEmpty {
+                        Text(plan.uppercased())
+                            .font(.system(size: 8, weight: .semibold))
+                            .tracking(0.4)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
+                    }
+
+                    Spacer(minLength: 4)
+                    if model.menuBarSelection == .account(account.id) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(theme.accent)
+                    }
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 5, height: 5)
+                        .help(statusHelp)
                 }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Show \(account.label) quota in the menu bar")
+            .opacity(needsSignIn ? 0.6 : 1)
 
-                Spacer(minLength: 4)
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 5, height: 5)
-                    .help(statusHelp)
+            if needsSignIn {
+                Label("Sign in required", systemImage: "person.crop.circle.badge.exclamationmark")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
 
             if account.windows.isEmpty {
@@ -302,7 +364,7 @@ private struct AccountCardView: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let hint = account.statusHint {
+                    if let hint = account.statusHint, account.provider != "codex" {
                         Text(hint)
                             .font(.system(size: 9))
                             .foregroundStyle(.secondary)
@@ -311,8 +373,16 @@ private struct AccountCardView: View {
                 }
             }
 
+            if account.status != "ok", !account.windows.isEmpty {
+                Text("Last known usage")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
+
             ForEach(account.windows) { window in
-                WindowRowView(window: window, theme: theme, now: now)
+                WindowRowView(window: window, theme: theme, now: now, isCurrent: account.status == "ok")
+                    .saturation(needsSignIn ? 0 : 1)
+                    .opacity(needsSignIn ? 0.45 : 1)
             }
 
             if account.status != "ok", !account.windows.isEmpty {
@@ -321,13 +391,37 @@ private struct AccountCardView: View {
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            if account.provider == "codex" {
+                if signingIn {
+                    Text("Choose \(account.label) in your browser to finish signing in.")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 10) {
+                    if signingIn {
+                        ProgressView().controlSize(.small)
+                        Button("Cancel sign-in") { model.cancelSignIn() }
+                    } else if needsSignIn {
+                        Button("Sign in again") { model.signInAgain(account) }
+                            .disabled(model.refreshing || model.signingInAccountID != nil)
+                    }
+                    Spacer()
+                    Button("Remove") { model.removeAccount(account) }
+                        .disabled(model.refreshing || model.signingInAccountID != nil)
+                        .help("Remove from Usage Monitor. Restore it from the footer at any time.")
+                }
+                .buttonStyle(.link)
+                .font(.system(size: 10))
+            }
         }
         .padding(.vertical, 10)
         .padding(.leading, 13)
         .padding(.trailing, 11)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.32))
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(needsSignIn ? 0.15 : 0.32))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -335,7 +429,7 @@ private struct AccountCardView: View {
         )
         .overlay(alignment: .leading) {
             RoundedRectangle(cornerRadius: 1.5)
-                .fill(theme.accent.opacity(0.85))
+                .fill(needsSignIn ? Color.secondary.opacity(0.35) : theme.accent.opacity(0.85))
                 .frame(width: 3)
                 .padding(.vertical, 10)
                 .padding(.leading, 3)
@@ -347,6 +441,7 @@ private struct WindowRowView: View {
     let window: UsageWindow
     let theme: ProviderTheme
     let now: Date
+    let isCurrent: Bool
 
     private var remaining: Double { max(0, min(100, window.remainingPercent)) }
 
@@ -359,6 +454,7 @@ private struct WindowRowView: View {
     }
 
     private var resetText: String {
+        guard isCurrent else { return "Outdated" }
         guard let date = window.resetDate else { return "—" }
         return L10n.resetDetail(date, now: now)
     }

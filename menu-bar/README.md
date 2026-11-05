@@ -41,6 +41,15 @@ once to a DSH plugin snapshot, but it does not require DSH.
 
 - Fetches on launch and every **5 minutes**.
 - **Refresh** in the popover fetches every provider immediately.
+- Expired Codex accounts stay visible as dimmed cards marked **Sign in required**.
+  Cached usage is marked as outdated and does not affect the menu-bar percentage.
+- **Sign in again** opens the official Codex browser login using a separate local
+  profile. Choose the email on the card; a different account is rejected. The
+  monitor refreshes after a matching login completes. **Cancel sign-in** stops
+  the pending login.
+- **Remove** hides a Codex account from this monitor across refreshes and restarts.
+  It leaves CLI and CC Switch credentials in place. Use **Restore removed
+  accounts** in the footer to show removed accounts again.
 - Claude Code OAuth is refreshed from the Keychain before expiry and written
   back to the same Keychain item, preserving `mcpOAuth`.
 - `STALE` appears when the snapshot is older than 15 minutes.
@@ -49,6 +58,9 @@ once to a DSH plugin snapshot, but it does not require DSH.
 
 - The label shows the worst remaining window for *Worst of all*, or a pinned
   provider (Codex / Claude / Grok).
+- Click a provider heading to pin that provider, or an account heading to pin
+  that specific account. A checkmark marks the selection; the footer picker
+  includes both providers and individual accounts. The selection survives restart.
 - The icon is the provider mark in that provider's colour.
 - The popover groups accounts by provider, with bars, used/remaining
   percentages, absolute resets and live countdowns.

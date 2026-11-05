@@ -41,8 +41,8 @@ enum DirectUsageEngine {
 
     // MARK: - Collection
 
-    static func collect(previous: UsageSnapshot?) async -> DirectResult {
-        let accounts = discoverAccounts()
+    static func collect(previous: UsageSnapshot?, excludedAccountIDs: Set<String> = []) async -> DirectResult {
+        let accounts = discoverAccounts(excludedAccountIDs: excludedAccountIDs)
         let now = Date()
 
         guard !accounts.isEmpty else {
@@ -102,23 +102,37 @@ enum DirectUsageEngine {
 
     // MARK: - Discovery
 
-    private static func discoverAccounts() -> [DirectAccount] {
+    private static func discoverAccounts(excludedAccountIDs: Set<String>) -> [DirectAccount] {
         var accounts: [DirectAccount] = []
         accounts += codexCLIAccounts()
         accounts += ccSwitchAccounts()
         accounts += claudeAccounts()
         accounts += grokAccounts()
 
-        var seen = Set<String>()
-        return accounts.filter { account in
-            guard !account.token.isEmpty else { return false }
-            return seen.insert(account.id).inserted
-        }
+        return selectAccounts(accounts, excludedAccountIDs: excludedAccountIDs)
     }
 
-    private static func codexCLIAccounts() -> [DirectAccount] {
+    static func selectAccounts(_ accounts: [DirectAccount], excludedAccountIDs: Set<String> = []) -> [DirectAccount] {
+        var selected: [DirectAccount] = []
+        var positions: [String: Int] = [:]
+        for account in accounts {
+            guard !account.token.isEmpty, !excludedAccountIDs.contains(account.id) else { continue }
+            if let index = positions[account.id] {
+                if account.provider == "codex",
+                   (account.expiresAt ?? -Double.infinity) > (selected[index].expiresAt ?? -Double.infinity) {
+                    selected[index] = account
+                }
+            } else {
+                positions[account.id] = selected.count
+                selected.append(account)
+            }
+        }
+        return selected
+    }
+
+    static func codexCLIAccounts(homes: [URL]? = nil) -> [DirectAccount] {
         var accounts: [DirectAccount] = []
-        for home in codexHomes() {
+        for home in homes ?? codexHomes() {
             guard let auth = readJSON(home.appendingPathComponent("auth.json")) as? [String: Any],
                   (auth["auth_mode"] as? String) == "chatgpt",
                   let tokens = auth["tokens"] as? [String: Any],
@@ -154,9 +168,19 @@ enum DirectUsageEngine {
         return accounts
     }
 
-    private static func codexHomes() -> [URL] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+    static func codexHomes(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        supportDirectory: URL = UsageStateStore.supportDirectory
+    ) -> [URL] {
         var homes: [URL] = []
+        let managedDirectory = supportDirectory.appendingPathComponent("Accounts", isDirectory: true)
+        if let entries = try? FileManager.default.contentsOfDirectory(
+            at: managedDirectory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        ) {
+            homes += entries.sorted { $0.path < $1.path }.filter {
+                FileManager.default.fileExists(atPath: $0.appendingPathComponent("auth.json").path)
+            }
+        }
         if let value = ProcessInfo.processInfo.environment["CODEX_HOME"], !value.isEmpty {
             homes.append(URL(fileURLWithPath: (value as NSString).expandingTildeInPath))
         } else {
@@ -174,8 +198,8 @@ enum DirectUsageEngine {
         return homes.filter { seen.insert($0.path).inserted }
     }
 
-    private static func ccSwitchAccounts() -> [DirectAccount] {
-        let db = FileManager.default.homeDirectoryForCurrentUser
+    static func ccSwitchAccounts(database: URL? = nil) -> [DirectAccount] {
+        let db = database ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".cc-switch/cc-switch.db")
         guard FileManager.default.fileExists(atPath: db.path) else { return [] }
         guard let output = try? run("/usr/bin/sqlite3", [
@@ -187,7 +211,6 @@ enum DirectUsageEngine {
         }
 
         var accounts: [DirectAccount] = []
-        let now = Date().timeIntervalSince1970 * 1000
         for row in rows {
             guard let settings = dictionary(from: row["settings_config"]) else { continue }
             guard let auth = dictionary(from: settings["auth"]),
@@ -196,7 +219,6 @@ enum DirectUsageEngine {
                 continue
             }
             let info = codexIdentity(token, fallbackAccountId: tokens["account_id"] as? String)
-            if let exp = info.expiresAt, exp * 1000 < now + 60_000 { continue }
             let identity = info.userId ?? info.email ?? info.teamId
             guard let identity, !identity.isEmpty else { continue }
             let name = row["name"] as? String
@@ -319,8 +341,16 @@ enum DirectUsageEngine {
 
     // MARK: - Fetch
 
-    private static func fetchAccount(_ account: DirectAccount, previousAccount: UsageAccount?) async -> UsageAccount {
+    static func fetchAccount(_ account: DirectAccount, previousAccount: UsageAccount?) async -> UsageAccount {
         var current = account
+        if current.provider == "codex", let expiresAt = current.expiresAt,
+           expiresAt <= Date().timeIntervalSince1970 * 1000 {
+            return failedAccount(
+                current,
+                error: DirectError(kind: "auth", message: "Credential expired. Sign in again."),
+                previous: previousAccount
+            )
+        }
         if current.provider == "claude" {
         }
         do {
@@ -371,7 +401,8 @@ enum DirectUsageEngine {
             statusHint: signInHint(for: account.provider),
             windows: previous?.windows ?? [],
             extras: previous?.extras,
-            updatedAt: iso(Date()),
+            updatedAt: account.provider == "codex" && previous?.windows.isEmpty == false
+                ? previous?.updatedAt : iso(Date()),
             limitReached: previous?.limitReached
         )
     }
@@ -825,7 +856,7 @@ enum DirectUsageEngine {
 
     // MARK: - Helpers
 
-    private static func codexIdentity(_ token: String, fallbackAccountId: String?) -> (
+    static func codexIdentity(_ token: String, fallbackAccountId: String?) -> (
         email: String?, userId: String?, teamId: String?, plan: String?, expiresAt: Double?
     ) {
         let claims = jwtClaims(token)

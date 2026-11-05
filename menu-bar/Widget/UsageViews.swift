@@ -151,7 +151,7 @@ private struct ProviderColumn: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            ForEach(account.windows.prefix(2)) { window in
+            ForEach(account.status == "ok" ? Array(account.windows.prefix(2)) : []) { window in
                 WindowLine(window: window, compact: true)
             }
             if account.status == "auth" {
@@ -174,6 +174,7 @@ private struct SmallUsageView: View {
 
     private var rows: [(UsageAccount, UsageWindow)] {
         snapshot.accounts
+            .filter { $0.status == "ok" }
             .flatMap { account in account.windows.map { (account, $0) } }
             .sorted { $0.1.remaining < $1.1.remaining }
             .prefix(2)
@@ -183,6 +184,11 @@ private struct SmallUsageView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             WidgetHeader(entry: entry)
+            if rows.isEmpty {
+                Text(snapshot.accounts.contains(where: { $0.status == "auth" }) ? L10n.needsSignIn() : L10n.unavailable())
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
             ForEach(rows.indices, id: \.self) { index in
                 let row = rows[index]
                 VStack(alignment: .leading, spacing: 3) {
@@ -219,6 +225,7 @@ private struct MediumUsageView: View {
 
     private var accounts: [UsageAccount] {
         snapshot.accounts.sorted { left, right in
+            if (left.status == "ok") != (right.status == "ok") { return left.status == "ok" }
             let rank = ["codex": 0, "grok": 1]
             return (rank[left.provider] ?? 9) < (rank[right.provider] ?? 9)
         }
@@ -268,7 +275,7 @@ private struct LargeUsageView: View {
                         }
                     }
 
-                    ForEach(account.windows) { window in
+                    ForEach(account.status == "ok" ? account.windows : []) { window in
                         WindowLine(window: window, showAbsoluteReset: true)
                     }
 
